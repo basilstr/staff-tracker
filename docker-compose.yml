@@ -1,0 +1,74 @@
+services:
+    app:
+        container_name: staff-app
+        build:
+            context: ./docker/apache
+            args:
+                UID: ${UID}
+                GID: ${GID}
+        ports:
+            - 80:80
+        volumes:
+            - ./:/var/www/html:rw
+            - ./docker/apache/default.conf:/etc/apache2/sites-available/000-default.conf
+            - ./storage/logs/apache/:/var/log/apache2/
+        environment:
+            - PUID=${UID}
+            - PGID=${GID}
+        depends_on:
+            - db
+            - redis
+        networks:
+            - staff-db-network
+
+    db:
+        container_name: staff-db
+        build:
+            context: ./docker/mysql
+        volumes:
+            - db_staff_data:/var/lib/mysql
+            - ./docker/mysql/init.sql:/docker-entrypoint-initdb.d/init.sql
+        environment:
+            MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+            MYSQL_USER: ${DB_USERNAME}
+            MYSQL_PASSWORD: ${DB_PASSWORD}
+            MYSQL_DATABASE: ${DB_DATABASE}
+        ports:
+            - 3306:3306
+        networks:
+            - staff-db-network
+
+    phpmyadmin:
+        image: phpmyadmin/phpmyadmin:latest
+        restart: always
+        ports:
+            - "8080:80"
+        environment:
+            PMA_HOST: db
+            MYSQL_ROOT_PASSWORD: ${DB_PASSWORD}
+        networks:
+            - staff-db-network
+    redis:
+        image: redis:7.2.4-alpine
+        restart: unless-stopped
+        container_name: staff-redis
+        command:
+            - 'redis-server'
+            - '--requirepass ${REDIS_PASSWORD}'
+        volumes:
+            - redis_staff_data:/data
+        networks:
+            - staff-db-network
+
+volumes:
+    db_staff_data:
+        driver: local
+        name: staff_db_data
+    redis_staff_data:
+        driver: local
+        name: staff_redis_data
+
+networks:
+    staff-db-network:
+        driver: bridge
+        name: staff-db-network

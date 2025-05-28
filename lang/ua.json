@@ -1,0 +1,13 @@
+{
+    "Rank Owner" : "власник групи",
+    "Rank Admin" : "адміністратор групи",
+    "Rank Moderator" : "змінювати статус персоналу групи",
+    "Rank Self" : "змінювати тільки власний статус",
+    "Rank View" : "можливість перегляду (входу)",
+    "Rank Forbidden" : "немає доступу",
+    "Join is success to :unitName" : "Успішно додано до групи :unitName",
+    ":date user :user set status :status" : ":date - :status (:user)",
+
+
+    "End": "кінець"
+}

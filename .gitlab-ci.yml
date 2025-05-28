@@ -1,0 +1,162 @@
+stages:
+  - pre-build
+  - build-dependencies
+  - tests
+
+# ----------------- Global configs -------------------------
+
+services:
+  - name: mariadb:latest
+    variables:
+      MYSQL_DATABASE: test_staff_tracker
+      MYSQL_USER: user
+      MYSQL_PASSWORD: password
+      MYSQL_ROOT_PASSWORD: password
+
+  - docker:dind
+  - redis:latest
+
+variables:
+  MYSQL_DATABASE: test_staff_tracker
+  MYSQL_USER: user
+  MYSQL_PASSWORD: password
+  MYSQL_ROOT_PASSWORD: password
+  DB_CONNECTION: mysql
+  DB_HOST: mariadb
+  DB_PORT: 3306
+  DB_DATABASE: test_staff_tracker
+  DB_USERNAME: user
+  DB_PASSWORD: password
+  DB_ROOT_PASSWORD: password
+  REDIS_HOST: redis
+  REDIS_PORT: 6379
+  REDIS_PASSWORD: null
+  TEST_TAG: ci-yarn-v4
+  # Use TLS https://docs.gitlab.com/ee/ci/docker/using_docker_build.html#tls-enabled
+  DOCKER_HOST: tcp://docker:2375/
+  # DOCKER_HOST: tcp://docker:2376
+  # DOCKER_TLS_CERTDIR: "/certs"
+  DOCKER_TLS_CERTDIR: ""
+  CONTAINER_TEST_IMAGE: $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_SLUG
+  CONTAINER_RELEASE_IMAGE: $CI_REGISTRY_IMAGE:latest
+  DOCKER_DRIVER: overlay2
+
+image: $CI_REGISTRY_IMAGE:$TEST_TAG
+
+# ----------------- Jobs -------------------------
+
+# [BUILD] Docker Image
+build-ci-image:
+  stage: pre-build
+  image: docker:latest
+  services:
+    - name: docker:dind
+  before_script:
+    - unset DOCKER_HOST
+    - echo 'pre-build CI_REGISTRY_PASSWORD:'
+    - echo $CI_REGISTRY_PASSWORD | docker login -u $CI_REGISTRY_USER --password-stdin $CI_REGISTRY
+  script:
+    - docker build --no-cache -f ./docker/ci/Dockerfile-ci -t $CI_REGISTRY_IMAGE:$TEST_TAG .
+    - docker push $CI_REGISTRY_IMAGE:$TEST_TAG
+    - docker logout $CI_REGISTRY
+  only:
+    - merge_requests
+    - develop
+  when: manual
+  tags:
+    - staff-build
+
+# [PRE-BUILD] PHP Dependencies
+composer-dependencies:
+  stage: build-dependencies
+  except:
+    - tags
+  only:
+    - merge_requests
+    - develop
+  before_script:
+    - cp .env.ci .env
+  script:
+    - echo 'composer-dependencies - current directory'
+    - composer install --no-interaction --prefer-dist
+  cache:
+    paths:
+      - vendor/
+  artifacts:
+    paths:
+      - vendor/
+    expire_in: 1 hour
+  tags:
+    - staff-build
+
+# [TEST] RUN PEST TESTS
+lints:
+  stage: tests
+  cache:
+    policy: pull
+  except:
+    - tags
+  only:
+    - merge_requests
+    - develop
+  before_script:
+    - cp .env.ci .env
+    - php artisan key:generate
+  script:
+    - echo 'PHP Stan is starting to analyse'
+    - pwd
+    - ./vendor/bin/phpstan analyse --memory-limit=2G --error-format=json > phpstan.json
+  artifacts:
+    reports:
+      codequality: phpstan.json
+  needs:
+    - job: composer-dependencies
+      artifacts: true
+      optional: true
+  allow_failure: true
+  tags:
+    - staff-build
+
+# [TEST] RUN PEST TESTS
+backend-tests:
+  stage: tests
+  except:
+    - tags
+  before_script:
+    - cp .env.ci .env
+    - php artisan key:generate
+  cache:
+    policy: pull
+  only:
+    - merge_requests
+    - develop
+  script:
+    - echo 'check redis'
+    - redis-cli -h redis ping
+    - php artisan test
+  needs:
+    - job: composer-dependencies
+      artifacts: true
+      optional: true
+  tags:
+    - staff-build
+
+# [TEST] RUN NPM TEST
+front-tests:
+  stage: tests
+  except:
+    - tags
+  before_script:
+    - echo 'install npm dependencies'
+    - cd resources/js
+    - npm install
+  cache:
+    policy: pull
+  only:
+    - merge_requests
+    - develop
+  script:
+    - echo 'run tests'
+    - npm run test
+  tags:
+    - staff-build
