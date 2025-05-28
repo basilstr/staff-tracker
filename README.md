@@ -18,7 +18,7 @@
 Склонуйте репозиторій проєкту:
 
 ```bash
-git clone git@gitlab.com:incredibly-awesome-projects/staff-tracker.git
+git clone https://github.com/basilstr/staff-tracker.git
 cd staff-tracker
 ```
 
